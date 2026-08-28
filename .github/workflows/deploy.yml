@@ -44,7 +44,7 @@ jobs:
           ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
             'cd /docker/odoo-xdlf && docker compose up -d && docker restart odoo-xdlf-odoo-1'
 
-      - name: Upgrade changed Odoo modules
+      - name: Install or upgrade changed Odoo modules
         run: |
           BEFORE="${{ github.event.before }}"
           if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
@@ -60,8 +60,35 @@ jobs:
             echo "No custom module files changed."
             exit 0
           fi
-          echo "Upgrading modules: $MODULES"
-          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            "docker exec odoo-xdlf-odoo-1 odoo --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons -d burqan -u $MODULES --stop-after-init --no-http"
-          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            'cd /docker/odoo-xdlf && docker compose up -d'
+          echo "Changed modules: $MODULES"
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" bash -s -- "$MODULES" << 'ENDSSH'
+          set -euo pipefail
+          MODULES="$1"
+          cd /docker/odoo-xdlf
+          trap 'docker compose up -d' EXIT
+          docker compose stop odoo
+
+          INIT=""
+          UPDATE=""
+          IFS=','
+          for m in $MODULES; do
+            m=$(echo "$m" | tr -d '[:space:]')
+            [ -z "$m" ] && continue
+            STATE=$(docker exec odoo-xdlf-db-1 psql -U odoo -d burqan -tAc \
+              "SELECT state FROM ir_module_module WHERE name='${m}'" | tr -d '[:space:]' || true)
+            if [ "$STATE" = "installed" ] || [ "$STATE" = "to upgrade" ]; then
+              UPDATE="${UPDATE:+$UPDATE,}$m"
+            else
+              INIT="${INIT:+$INIT,}$m"
+            fi
+          done
+
+          ARGS="-d burqan --stop-after-init --no-http --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons"
+          [ -n "$INIT" ] && ARGS="$ARGS -i $INIT"
+          [ -n "$UPDATE" ] && ARGS="$ARGS -u $UPDATE"
+          echo "Installing: ${INIT:-none}"
+          echo "Upgrading: ${UPDATE:-none}"
+
+          docker compose run --rm --no-deps odoo odoo $ARGS
+          docker compose up -d
+          ENDSSH
