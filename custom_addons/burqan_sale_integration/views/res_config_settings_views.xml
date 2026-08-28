@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_burqan_sale" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.burqan.sale</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="sale.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//block[@id='connectors_setting_container']" position="inside">
+                <setting id="burqan_webhook_secret_setting"
+                         string="Burqan Store webhook"
+                         help="Shared secret for POST /burqan/webhook/sale. Must match Burqan env ODOO_WEBHOOK_SECRET. Also available as system parameter burqan.webhook_secret.">
+                    <field name="burqan_webhook_secret" password="True"/>
+                </setting>
+                <setting id="burqan_webhook_auto_invoice_setting"
+                         string="Auto-invoice Burqan webhook orders"
+                         help="Off by default. When enabled, confirmed webhook sale orders also create and post an invoice. No payments are created.">
+                    <field name="burqan_webhook_auto_invoice"/>
+                </setting>
+            </xpath>
+        </field>
+    </record>
+</odoo>
