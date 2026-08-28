@@ -70,6 +70,7 @@ jobs:
 
           INIT=""
           UPDATE=""
+          OLDIFS="$IFS"
           IFS=','
           for m in $MODULES; do
             m=$(echo "$m" | tr -d '[:space:]')
@@ -82,6 +83,7 @@ jobs:
               INIT="${INIT:+$INIT,}$m"
             fi
           done
+          IFS="$OLDIFS"
 
           ARGS="-d burqan --stop-after-init --no-http --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons"
           [ -n "$INIT" ] && ARGS="$ARGS -i $INIT"
