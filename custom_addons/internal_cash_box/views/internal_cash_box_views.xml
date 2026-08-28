@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_internal_cash_box_search" model="ir.ui.view">
+        <field name="name">internal.cash.box.search</field>
+        <field name="model">internal.cash.box</field>
+        <field name="arch" type="xml">
+            <search string="Internal Cash Box">
+                <field name="description"/>
+                <field name="date"/>
+                <filter string="Draft" name="filter_draft" domain="[('state', '=', 'draft')]"/>
+                <filter string="Posted" name="filter_posted" domain="[('state', '=', 'posted')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Date" name="group_by_date" context="{'group_by': 'date'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="view_internal_cash_box_list" model="ir.ui.view">
+        <field name="name">internal.cash.box.list</field>
+        <field name="model">internal.cash.box</field>
+        <field name="arch" type="xml">
+            <list string="Entries"
+                  editable="bottom"
+                  create="true"
+                  delete="true"
+                  edit="true"
+                  js_class="internal_cash_box_list">
+                <field name="date"/>
+                <field name="description"/>
+                <field name="sales" sum="Total Sales"/>
+                <field name="expenses" sum="Total Expenses"/>
+                <field name="net_amount" readonly="1" sum="Total Net Amount"/>
+                <field name="state" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_internal_cash_box_total_list" model="ir.ui.view">
+        <field name="name">internal.cash.box.total.list</field>
+        <field name="model">internal.cash.box</field>
+        <field name="arch" type="xml">
+            <list string="Total Entries"
+                  create="false"
+                  edit="false"
+                  delete="false"
+                  default_order="date desc, id desc">
+                <field name="date"/>
+                <field name="description"/>
+                <field name="sales" sum="Total Sales"/>
+                <field name="expenses" sum="Total Expenses"/>
+                <field name="net_amount" readonly="1" sum="Total Net Amount"/>
+                <field name="state" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_internal_cash_box" model="ir.actions.act_window">
+        <field name="name">Entries</field>
+        <field name="res_model">internal.cash.box</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_internal_cash_box_list"/>
+        <field name="search_view_id" ref="view_internal_cash_box_search"/>
+        <field name="domain">[('state', '=', 'draft')]</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first internal cash box entry
+            </p>
+            <p>
+                Add sales and expenses directly in the list. Select entries and click ترحيل to archive them.
+            </p>
+        </field>
+    </record>
+
+    <record id="action_internal_cash_box_total" model="ir.actions.act_window">
+        <field name="name">Total Entries</field>
+        <field name="res_model">internal.cash.box</field>
+        <field name="view_mode">list</field>
+        <field name="view_id" ref="view_internal_cash_box_total_list"/>
+        <field name="search_view_id" ref="view_internal_cash_box_search"/>
+        <field name="domain">[('state', '=', 'posted')]</field>
+        <field name="context">{'search_default_group_by_date': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No posted entries yet
+            </p>
+            <p>
+                Posted entries are grouped by date with daily totals for sales, expenses, and net amount.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_internal_cash_box_root"
+              name="Internal Cash Box"
+              sequence="25"
+              groups="internal_cash_box.group_internal_cash_box_user"/>
+
+    <menuitem id="menu_internal_cash_box_entries"
+              name="Entries"
+              parent="menu_internal_cash_box_root"
+              action="action_internal_cash_box"
+              sequence="10"/>
+
+    <menuitem id="menu_internal_cash_box_total"
+              name="Total Entries"
+              parent="menu_internal_cash_box_root"
+              action="action_internal_cash_box_total"
+              sequence="20"/>
+</odoo>

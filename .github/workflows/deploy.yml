@@ -1,0 +1,67 @@
+name: Deploy to Hostinger VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install rsync
+        run: sudo apt-get update && sudo apt-get install -y rsync
+
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync custom addons
+        run: |
+          rsync -az --delete \
+            --exclude '__pycache__' \
+            --exclude '*.pyc' \
+            --exclude '*.zip' \
+            custom_addons/ \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/odoo/custom_addons/"
+
+      - name: Sync compose without touching server .env
+        run: |
+          scp docker-compose.yml \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/docker/odoo-xdlf/docker-compose.yml"
+
+      - name: Apply compose and restart Odoo
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'cd /docker/odoo-xdlf && docker compose up -d && docker restart odoo-xdlf-odoo-1'
+
+      - name: Upgrade changed Odoo modules
+        run: |
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial import or manual run — skip module upgrade."
+            exit 0
+          fi
+          MODULES=$(git diff --name-only "$BEFORE" HEAD -- custom_addons \
+            | awk -F/ 'NF>=2 {print $2}' \
+            | sort -u \
+            | grep -E '^[a-zA-Z0-9_]+$' \
+            | paste -sd, - || true)
+          if [ -z "$MODULES" ]; then
+            echo "No custom module files changed."
+            exit 0
+          fi
+          echo "Upgrading modules: $MODULES"
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            "docker exec odoo-xdlf-odoo-1 odoo --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons -d burqan -u $MODULES --stop-after-init --no-http"
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'cd /docker/odoo-xdlf && docker compose up -d'

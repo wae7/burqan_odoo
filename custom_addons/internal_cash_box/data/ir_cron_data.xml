@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <record id="ir_cron_internal_cash_box_auto_post" model="ir.cron">
+        <field name="name">Internal Cash Box: Auto Post Previous Day Entries</field>
+        <field name="model_id" ref="model_internal_cash_box"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_auto_post_entries()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="active" eval="True"/>
+        <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).strftime('%Y-%m-%d 00:05:00')"/>
+    </record>
+</odoo>

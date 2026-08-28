@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="internal_cash_box.ListView" t-inherit="web.ListView" t-inherit-mode="primary">
+        <xpath expr="//t[@t-component='props.Renderer']" position="after">
+            <div class="d-flex justify-content-end px-3 py-2 border-top bg-view">
+                <button type="button"
+                        class="btn btn-primary"
+                        t-on-click="onClickPost">
+                    ترحيل
+                </button>
+            </div>
+        </xpath>
+    </t>
+
+</templates>

@@ -1,0 +1,45 @@
+services:
+  odoo:
+    image: odoo:18
+    restart: unless-stopped
+    command:
+      - odoo
+      - --addons-path=/mnt/extra-addons,/usr/lib/python3/dist-packages/odoo/addons
+    ports:
+      - "8069"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.odoo.rule=Host(`erp.burqan.tech`)
+      - traefik.http.routers.odoo.entrypoints=websecure
+      - traefik.http.routers.odoo.tls.certresolver=letsencrypt
+      - traefik.http.services.odoo.loadbalancer.server.port=8069
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=${DB_PASSWORD}
+    volumes:
+      - odoo-data:/var/lib/odoo
+      - /opt/odoo/custom_addons:/mnt/extra-addons
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  odoo-data:
+  db:

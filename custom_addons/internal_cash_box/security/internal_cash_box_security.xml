@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="module_category_internal_cash_box" model="ir.module.category">
+        <field name="name">Internal Cash Box</field>
+        <field name="sequence">50</field>
+    </record>
+
+    <record id="group_internal_cash_box_user" model="res.groups">
+        <field name="name">User</field>
+        <field name="category_id" ref="module_category_internal_cash_box"/>
+        <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+    </record>
+
+    <record id="group_internal_cash_box_manager" model="res.groups">
+        <field name="name">Manager</field>
+        <field name="category_id" ref="module_category_internal_cash_box"/>
+        <field name="implied_ids" eval="[(4, ref('group_internal_cash_box_user'))]"/>
+    </record>
+</odoo>
