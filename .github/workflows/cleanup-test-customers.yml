@@ -18,55 +18,66 @@ jobs:
 
       - name: Cancel and remove test sale orders + partners
         run: |
-          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" bash -s << 'ENDSSH'
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" 'bash -s' << 'ENDSSH'
           set -euo pipefail
           cd /docker/odoo-xdlf
-          docker compose exec -T odoo odoo shell -d burqan --no-http << 'PY'
+          set -a
+          # shellcheck disable=SC1091
+          source .env
+          set +a
+
+          cat > /tmp/burqan_cleanup_test_partners.py << 'PY'
           names = ['Compat Test Store', 'Test Store']
           Partner = env['res.partner'].sudo()
           Sale = env['sale.order'].sudo()
-          partners = Partner.search([('name', 'in', names)])
-          print('partners_found', [(p.id, p.name) for p in partners])
+          partners = Partner.with_context(active_test=False).search([('name', 'in', names)])
+          print('partners_found', [(p.id, p.name, p.active) for p in partners])
           orders = Sale.search([('partner_id', 'in', partners.ids)])
           print('orders_found', [(o.id, o.name, o.state, o.partner_id.name) for o in orders])
-          for order in orders:
+          for order in list(orders):
+              oname = order.name
               try:
                   if order.state in ('sale', 'done'):
-                      order.action_cancel()
-                  if order.state != 'cancel' and order.state != 'draft':
-                      order.write({'state': 'cancel'})
+                      order.with_context(disable_cancel_warning=True).action_cancel()
               except Exception as e:
-                  print('cancel_failed', order.name, e)
+                  print('cancel_failed', oname, e)
+                  try:
+                      order.write({'state': 'cancel'})
+                  except Exception as e2:
+                      print('force_cancel_failed', oname, e2)
               try:
                   order.unlink()
-                  print('order_deleted', order.name if order.exists() else 'ok')
+                  print('order_deleted', oname)
               except Exception as e:
-                  print('order_unlink_failed', getattr(order, 'name', '?'), e)
-          # refresh after order deletes
-          partners = Partner.search([('name', 'in', names)])
-          for partner in partners:
+                  print('order_unlink_failed', oname, e)
+          partners = Partner.with_context(active_test=False).search([('name', 'in', names)])
+          for partner in list(partners):
+              pname = partner.name
               try:
-                  # also remove draft/cancel leftovers linked by name on note/client_order_ref if any orphan SOs remain
                   leftover = Sale.search([('partner_id', '=', partner.id)])
-                  for lo in leftover:
+                  for lo in list(leftover):
                       try:
                           if lo.state not in ('cancel', 'draft'):
-                              lo.action_cancel()
+                              lo.with_context(disable_cancel_warning=True).action_cancel()
                           lo.unlink()
                       except Exception as e:
                           print('leftover_failed', lo.name, e)
                   partner.unlink()
-                  print('partner_deleted', partner.name)
+                  print('partner_deleted', pname)
               except Exception as e:
-                  print('partner_unlink_failed', partner.name, e)
-                  # archive if cannot delete
+                  print('partner_unlink_failed', pname, e)
                   try:
                       partner.write({'active': False})
-                      print('partner_archived', partner.name)
+                      print('partner_archived', pname)
                   except Exception as e2:
-                      print('partner_archive_failed', partner.name, e2)
+                      print('partner_archive_failed', pname, e2)
           env.cr.commit()
-          left = Partner.search([('name', 'in', names), '|', ('active', '=', True), ('active', '=', False)])
+          left = Partner.with_context(active_test=False).search([('name', 'in', names)])
           print('remaining', [(p.id, p.name, p.active) for p in left])
           PY
+
+          docker compose run --rm --no-deps \
+            -e HOST=db -e USER=odoo -e PASSWORD="$DB_PASSWORD" \
+            -v /tmp/burqan_cleanup_test_partners.py:/tmp/burqan_cleanup_test_partners.py:ro \
+            odoo bash -lc 'odoo shell -d burqan --no-http < /tmp/burqan_cleanup_test_partners.py'
           ENDSSH
