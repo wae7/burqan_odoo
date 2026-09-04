@@ -261,7 +261,7 @@
                             <span class="burqan-label">Invoice Date:</span>
                         </div>
                         <div class="burqan-col-center">
-                            <span class="burqan-value" t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd-MM-yyyy"}'/>
+                            <span class="burqan-value" t-esc="o.invoice_date and o.invoice_date.strftime('%d-%m-%Y') or ''"/>
                         </div>
                         <div class="burqan-col-right burqan-ar">
                             <span class="burqan-label">تاريخ الفاتورة :</span>
@@ -272,7 +272,7 @@
                             <span class="burqan-label">Due Date:</span>
                         </div>
                         <div class="burqan-col-center">
-                            <span class="burqan-value" t-field="o.invoice_date_due" t-options='{"widget": "date", "format": "dd-MM-yyyy"}'/>
+                            <span class="burqan-value" t-esc="o.invoice_date_due and o.invoice_date_due.strftime('%d-%m-%Y') or ''"/>
                         </div>
                         <div class="burqan-col-right burqan-ar">
                             <span class="burqan-label">تاريخ الاستحقاق :</span>
@@ -431,5 +431,16 @@
                 </div>
             </div>
         </t>
+    </template>
+
+    <!-- Wire custom template into the invoice report dispatcher.
+         Without this, _get_name_invoice_report() returns our template name
+         but nothing t-calls it, which produces a blank PDF. -->
+    <template id="report_invoice" inherit_id="account.report_invoice">
+        <xpath expr="//t[@t-foreach='docs']" position="inside">
+            <t t-if="o._get_name_invoice_report() == 'burqan_invoice_report.report_invoice_document_burqan'"
+               t-call="burqan_invoice_report.report_invoice_document_burqan"
+               t-lang="lang"/>
+        </xpath>
     </template>
 </odoo>
