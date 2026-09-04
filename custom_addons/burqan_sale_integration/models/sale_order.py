@@ -4,15 +4,9 @@ from datetime import datetime, timezone
 from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
+from .exceptions import BurqanWebhookError
+
 _logger = logging.getLogger(__name__)
-
-
-class BurqanWebhookError(Exception):
-    def __init__(self, status, error, extra=None):
-        super().__init__(error)
-        self.status = status
-        self.error = error
-        self.extra = extra or {}
 
 
 class SaleOrder(models.Model):
@@ -55,13 +49,16 @@ class SaleOrder(models.Model):
         lines_data, templates = self._burqan_resolve_lines(payload['lines'])
         company = self._burqan_company_for_templates(templates)
         partner = self._burqan_find_or_create_partner(payload.get('store') or {})
-        salesperson, rep_note = self._burqan_match_salesperson(payload.get('representative') or {})
+        salesperson = self.env['res.users']._burqan_find_or_create_salesperson(
+            payload.get('representative') or {},
+            create_if_missing=True,
+        )[0]
         date_order = self._burqan_parse_occurred_at(payload.get('occurredAt'))
         payment_type = self._burqan_payment_type(payload.get('paymentType'))
-        note = self._burqan_order_note(payload, salesperson, rep_note)
+        note = self._burqan_order_note(payload, salesperson)
 
         try:
-            order = self.with_company(company).create({
+            order_vals = {
                 'partner_id': partner.id,
                 'date_order': date_order,
                 'client_order_ref': order_id,
@@ -69,9 +66,10 @@ class SaleOrder(models.Model):
                 'x_burqan_payment_type': payment_type,
                 'note': note,
                 'company_id': company.id,
-            })
+            }
             if salesperson:
-                order.user_id = salesperson
+                order_vals['user_id'] = salesperson.id
+            order = self.with_company(company).create(order_vals)
 
             for line in lines_data:
                 self.env['sale.order.line'].with_company(company).create({
@@ -198,29 +196,6 @@ class SaleOrder(models.Model):
         return partner
 
     @api.model
-    def _burqan_match_salesperson(self, representative):
-        Users = self.env['res.users']
-        email = (representative.get('email') or '').strip()
-        name = (representative.get('name') or '').strip()
-        user = Users.browse()
-        if email:
-            user = Users.search(['|', ('login', '=', email), ('email', '=', email)], limit=1)
-        if not user and name:
-            user = Users.search([('name', '=', name)], limit=1)
-        if user:
-            return user, False
-        if not representative:
-            return Users.browse(), False
-        parts = []
-        if name:
-            parts.append(name)
-        if email:
-            parts.append(email)
-        if representative.get('id') not in (None, ''):
-            parts.append(f"id={representative.get('id')}")
-        return Users.browse(), ', '.join(parts) if parts else False
-
-    @api.model
     def _burqan_payment_type(self, value):
         if not value:
             return False
@@ -245,7 +220,7 @@ class SaleOrder(models.Model):
         return parsed
 
     @api.model
-    def _burqan_order_note(self, payload, salesperson, rep_note):
+    def _burqan_order_note(self, payload, salesperson):
         store = payload.get('store') or {}
         payment = payload.get('paymentType') or ''
         lines = [
@@ -254,6 +229,9 @@ class SaleOrder(models.Model):
             f"Occurred (Amman): {payload.get('occurredAtAmman') or ''}",
             f"Payment: {payment}",
         ]
-        if not salesperson and rep_note:
-            lines.append(f"Representative: {rep_note}")
+        if salesperson:
+            lines.append(
+                f"Salesperson: {salesperson.name}"
+                f" ({salesperson.email or salesperson.login})"
+            )
         return '\n'.join(lines)

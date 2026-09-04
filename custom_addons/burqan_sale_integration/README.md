@@ -1,34 +1,59 @@
 # Burqan Sale Integration
 
-Creates and confirms Odoo 18 sale orders from Burqan Store `sale.completed` webhooks.
+Creates and confirms Odoo 18 sale orders from Burqan Store webhooks, and syncs representatives as Odoo salespeople.
 
-## Endpoint
+## Endpoints
 
-`POST https://erp.burqan.tech/burqan/webhook/sale`
+| Method | URL |
+| --- | --- |
+| POST | `https://erp.burqan.tech/burqan/webhook/sale` |
+| POST | `https://erp.burqan.tech/burqan/webhook/representative` |
 
 | Header | Value |
 | --- | --- |
 | `Content-Type` | `application/json` |
 | `Authorization` | `Bearer <secret>` |
 
-The body is a raw JSON object (not JSON-RPC).
+Body is a raw JSON object (not JSON-RPC). Shared secret = Odoo `burqan.webhook_secret` = Burqan `ODOO_WEBHOOK_SECRET`.
 
 ## Set the shared secret
 
-Use the **same** value as Burqan API env `ODOO_WEBHOOK_SECRET`.
-
 1. **Settings → Sales** → Burqan Store webhook, or
-2. Enable developer mode → **Settings → Technical → System Parameters** → create/edit `burqan.webhook_secret`
-
-If the parameter is empty, every request returns `401`.
+2. Developer mode → **Settings → Technical → System Parameters** → `burqan.webhook_secret`
 
 ## Product mapping
 
-Each Burqan `lines[].productId` must match `product.template` field **ID** (`x_integration_id`) as a string, e.g. Burqan product `12` → product ID `12`.
+Each Burqan `lines[].productId` must match `product.template` **ID** (`x_integration_id`) as a string.
 
-If any line has no match, the webhook returns `422` with `missingProductIds` and creates **no** sale order.
+## Representative / salesperson sync
 
-## Example curl
+On every sale, Odoo finds or **creates** an Odoo user from `representative` and sets `sale.order.user_id`.
+
+Matching order:
+1. `res.users.x_burqan_representative_id` = `representative.id`
+2. login/email = `representative.email`
+3. name = `representative.name`
+4. else create a Sales user
+
+Optional dedicated sync when a rep is created/updated in Burqan:
+
+```bash
+curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/representative' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer CHANGE_ME' \
+  -d '{
+    "event": "representative.upsert",
+    "representative": {
+      "id": 8,
+      "name": "Ahmad Gonar",
+      "email": "ahmad-gonar@gmail.com"
+    }
+  }'
+```
+
+Success: `{"ok": true, "userId": 5, "created": true, "login": "ahmad-gonar@gmail.com"}`
+
+## Sale example
 
 ```bash
 curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/sale' \
@@ -55,12 +80,11 @@ curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/sale' \
   }'
 ```
 
-Success: `{"ok": true, "saleOrderId": 15}`  
-Repeat of the same `orderId`: `200` with the existing sale order id (no duplicate).
+Success: `{"ok": true, "saleOrderId": 15, "salespersonId": 5}`
 
 ## Behaviour
 
-- Customer: partner with `x_burqan_store_id` = `store.id`, else phone, else a new company partner.
-- Line prices come from Burqan `unitPrice`, not the Odoo list price.
-- Salesperson is set only when a `res.users` matches representative email/login/name; otherwise the representative is written on the SO note.
-- Orders are confirmed. Invoices/payments are not created unless **Auto-invoice Burqan webhook orders** is enabled (default off).
+- Customer: partner with `x_burqan_store_id` = `store.id`, else phone, else create company partner.
+- Line prices come from Burqan `unitPrice`.
+- Salesperson is auto-created if missing (Sales / Own Documents group).
+- Orders are confirmed. Invoices optional via **Auto-invoice Burqan webhook orders** (default off).
