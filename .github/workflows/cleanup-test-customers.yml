@@ -1,0 +1,72 @@
+name: Cleanup Odoo test customers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      - name: Trust VPS host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Cancel and remove test sale orders + partners
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" bash -s << 'ENDSSH'
+          set -euo pipefail
+          cd /docker/odoo-xdlf
+          docker compose exec -T odoo odoo shell -d burqan --no-http << 'PY'
+          names = ['Compat Test Store', 'Test Store']
+          Partner = env['res.partner'].sudo()
+          Sale = env['sale.order'].sudo()
+          partners = Partner.search([('name', 'in', names)])
+          print('partners_found', [(p.id, p.name) for p in partners])
+          orders = Sale.search([('partner_id', 'in', partners.ids)])
+          print('orders_found', [(o.id, o.name, o.state, o.partner_id.name) for o in orders])
+          for order in orders:
+              try:
+                  if order.state in ('sale', 'done'):
+                      order.action_cancel()
+                  if order.state != 'cancel' and order.state != 'draft':
+                      order.write({'state': 'cancel'})
+              except Exception as e:
+                  print('cancel_failed', order.name, e)
+              try:
+                  order.unlink()
+                  print('order_deleted', order.name if order.exists() else 'ok')
+              except Exception as e:
+                  print('order_unlink_failed', getattr(order, 'name', '?'), e)
+          # refresh after order deletes
+          partners = Partner.search([('name', 'in', names)])
+          for partner in partners:
+              try:
+                  # also remove draft/cancel leftovers linked by name on note/client_order_ref if any orphan SOs remain
+                  leftover = Sale.search([('partner_id', '=', partner.id)])
+                  for lo in leftover:
+                      try:
+                          if lo.state not in ('cancel', 'draft'):
+                              lo.action_cancel()
+                          lo.unlink()
+                      except Exception as e:
+                          print('leftover_failed', lo.name, e)
+                  partner.unlink()
+                  print('partner_deleted', partner.name)
+              except Exception as e:
+                  print('partner_unlink_failed', partner.name, e)
+                  # archive if cannot delete
+                  try:
+                      partner.write({'active': False})
+                      print('partner_archived', partner.name)
+                  except Exception as e2:
+                      print('partner_archive_failed', partner.name, e2)
+          env.cr.commit()
+          left = Partner.search([('name', 'in', names), '|', ('active', '=', True), ('active', '=', False)])
+          print('remaining', [(p.id, p.name, p.active) for p in left])
+          PY
+          ENDSSH
