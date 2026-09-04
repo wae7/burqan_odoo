@@ -76,8 +76,10 @@ jobs:
           print('remaining', [(p.id, p.name, p.active) for p in left])
           PY
 
+          # Use the Odoo image entrypoint (maps HOST/USER/PASSWORD → db flags).
           docker compose run --rm --no-deps \
-            -e HOST=db -e USER=odoo -e PASSWORD="$DB_PASSWORD" \
-            -v /tmp/burqan_cleanup_test_partners.py:/tmp/burqan_cleanup_test_partners.py:ro \
-            odoo bash -lc 'odoo shell -d burqan --no-http < /tmp/burqan_cleanup_test_partners.py'
+            -e HOST=db \
+            -e USER=odoo \
+            -e PASSWORD="$DB_PASSWORD" \
+            odoo odoo shell -d burqan --no-http < /tmp/burqan_cleanup_test_partners.py
           ENDSSH
