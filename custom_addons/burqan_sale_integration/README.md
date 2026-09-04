@@ -82,9 +82,35 @@ curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/sale' \
 
 Success: `{"ok": true, "saleOrderId": 15, "salespersonId": 5}`
 
+## External sales (`source: "external"`)
+
+Admin-recorded sales without a Burqan store id:
+
+- `source`: `"store"` (default if missing) or `"external"`
+- For `external`: `store.id` may be null; `store.name` is required; partner is matched/created by name and **no** `x_burqan_store_id` is set
+- For `store`: current behaviour (require `store.id` + name, match `x_burqan_store_id`)
+
+```bash
+curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/sale' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer CHANGE_ME' \
+  -d '{
+    "event": "sale.completed",
+    "source": "external",
+    "orderId": "ext-42",
+    "occurredAt": "2026-09-04T21:00:00.000Z",
+    "occurredAtAmman": "2026-09-05 00:00:00",
+    "paymentType": "cash",
+    "store": { "id": null, "name": "سوق الحي", "phone": null },
+    "representative": { "id": 3, "name": "محمد", "email": "rep@burqan.store" },
+    "lines": [{ "productId": 31, "productName": "Choco Beurre Lots", "quantity": 2, "unitPrice": 1.9, "lineTotal": 3.8 }],
+    "totalAmount": 3.8
+  }'
+```
+
 ## Behaviour
 
-- Customer: partner with `x_burqan_store_id` = `store.id`, else phone, else create company partner.
+- Customer: partner with `x_burqan_store_id` = `store.id`, else phone, else create company partner (store sales); external sales use name only.
 - Line prices come from Burqan `unitPrice`.
 - Salesperson is auto-created if missing (Sales / Own Documents group).
 - Orders are confirmed. Invoices optional via **Auto-invoice Burqan webhook orders** (default off).

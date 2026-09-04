@@ -8,6 +8,7 @@
             <xpath expr="//group[@name='sales_person']/field[@name='client_order_ref']" position="after">
                 <field name="x_burqan_order_id" readonly="1"/>
                 <field name="x_burqan_payment_type" readonly="1"/>
+                <field name="x_burqan_source" readonly="1"/>
             </xpath>
         </field>
     </record>

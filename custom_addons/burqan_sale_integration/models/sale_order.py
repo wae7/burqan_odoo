@@ -27,6 +27,16 @@ class SaleOrder(models.Model):
         copy=False,
         help='cash or deferred as sent by Burqan Store.',
     )
+    x_burqan_source = fields.Selection(
+        [
+            ('store', 'Store'),
+            ('external', 'External'),
+        ],
+        string='Burqan Source',
+        copy=False,
+        default='store',
+        help='store = rep store sale; external = admin-recorded external sale.',
+    )
 
     _sql_constraints = [
         (
@@ -48,14 +58,18 @@ class SaleOrder(models.Model):
 
         lines_data, templates = self._burqan_resolve_lines(payload['lines'])
         company = self._burqan_company_for_templates(templates)
-        partner = self._burqan_find_or_create_partner(payload.get('store') or {})
+        source = self._burqan_source(payload)
+        partner = self._burqan_find_or_create_partner(
+            payload.get('store') or {},
+            source=source,
+        )
         salesperson = self.env['res.users']._burqan_find_or_create_salesperson(
             payload.get('representative') or {},
             create_if_missing=True,
         )[0]
         date_order = self._burqan_parse_occurred_at(payload.get('occurredAt'))
         payment_type = self._burqan_payment_type(payload.get('paymentType'))
-        note = self._burqan_order_note(payload, salesperson)
+        note = self._burqan_order_note(payload, salesperson, source)
 
         try:
             order_vals = {
@@ -64,6 +78,7 @@ class SaleOrder(models.Model):
                 'client_order_ref': order_id,
                 'x_burqan_order_id': order_id,
                 'x_burqan_payment_type': payment_type,
+                'x_burqan_source': source,
                 'note': note,
                 'company_id': company.id,
             }
@@ -97,6 +112,16 @@ class SaleOrder(models.Model):
         return order, False
 
     @api.model
+    def _burqan_source(self, payload):
+        raw = (payload.get('source') or 'store')
+        if not isinstance(raw, str):
+            raise BurqanWebhookError(400, 'source must be "store" or "external".')
+        source = raw.strip().lower()
+        if source not in ('store', 'external'):
+            raise BurqanWebhookError(400, 'source must be "store" or "external".')
+        return source
+
+    @api.model
     def _burqan_validate_payload(self, payload):
         if not isinstance(payload, dict):
             raise BurqanWebhookError(400, 'Payload must be a JSON object.')
@@ -105,9 +130,15 @@ class SaleOrder(models.Model):
         order_id = payload.get('orderId')
         if order_id is None or str(order_id).strip() == '':
             raise BurqanWebhookError(400, 'orderId is required.')
+        source = self._burqan_source(payload)
         store = payload.get('store')
-        if not isinstance(store, dict) or store.get('id') in (None, '') or not store.get('name'):
-            raise BurqanWebhookError(400, 'store.id and store.name are required.')
+        if not isinstance(store, dict):
+            raise BurqanWebhookError(400, 'store is required.')
+        name = (store.get('name') or '').strip() if store.get('name') is not None else ''
+        if not name:
+            raise BurqanWebhookError(400, 'store.name is required.')
+        if source == 'store' and store.get('id') in (None, ''):
+            raise BurqanWebhookError(400, 'store.id is required for store sales.')
         lines = payload.get('lines')
         if not isinstance(lines, list) or not lines:
             raise BurqanWebhookError(400, 'lines must be a non-empty array.')
@@ -170,10 +201,43 @@ class SaleOrder(models.Model):
         return companies[:1] or self.env.company
 
     @api.model
-    def _burqan_find_or_create_partner(self, store):
+    def _burqan_find_or_create_partner(self, store, source='store'):
         Partner = self.env['res.partner']
-        store_id = str(store['id']).strip()
+        name = (store.get('name') or '').strip()
         phone = (store.get('phone') or '').strip() or False
+        store_id_raw = store.get('id')
+        store_id = (
+            str(store_id_raw).strip()
+            if store_id_raw not in (None, '')
+            else False
+        )
+
+        if source == 'external' or not store_id:
+            # External / free-text customer: match by name, never set x_burqan_store_id.
+            partner = Partner.search([
+                ('name', '=', name),
+                ('is_company', '=', True),
+                ('x_burqan_store_id', '=', False),
+            ], limit=1)
+            if not partner:
+                partner = Partner.search([
+                    ('name', '=', name),
+                    ('x_burqan_store_id', '=', False),
+                ], limit=1)
+            if not partner:
+                vals = {
+                    'name': name,
+                    'company_type': 'company',
+                    'is_company': True,
+                    'customer_rank': 1,
+                }
+                if phone:
+                    vals['phone'] = phone
+                partner = Partner.create(vals)
+            elif phone and not partner.phone:
+                partner.phone = phone
+            return partner
+
         partner = Partner.search([('x_burqan_store_id', '=', store_id)], limit=1)
         if not partner and phone:
             partner = Partner.search([
@@ -186,7 +250,7 @@ class SaleOrder(models.Model):
                 partner.x_burqan_store_id = store_id
         if not partner:
             partner = Partner.create({
-                'name': store['name'],
+                'name': name,
                 'phone': phone,
                 'x_burqan_store_id': store_id,
                 'company_type': 'company',
@@ -220,12 +284,17 @@ class SaleOrder(models.Model):
         return parsed
 
     @api.model
-    def _burqan_order_note(self, payload, salesperson):
+    def _burqan_order_note(self, payload, salesperson, source='store'):
         store = payload.get('store') or {}
         payment = payload.get('paymentType') or ''
+        store_id = store.get('id')
+        store_label = store.get('name') or ''
+        if store_id not in (None, ''):
+            store_label = f"{store_label} (id={store_id})"
         lines = [
             f"Burqan order {payload.get('orderId')}",
-            f"Store: {store.get('name')} (id={store.get('id')})",
+            f"Source: {source}",
+            f"Customer: {store_label}",
             f"Occurred (Amman): {payload.get('occurredAtAmman') or ''}",
             f"Payment: {payment}",
         ]
