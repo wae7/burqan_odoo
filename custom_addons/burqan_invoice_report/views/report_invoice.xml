@@ -1,0 +1,435 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="report_invoice_document_burqan">
+        <t t-call="web.external_layout">
+            <t t-set="o" t-value="o.with_context(lang=lang)"/>
+            <t t-set="o_en" t-value="o.with_context(lang='en_US')"/>
+            <t t-set="forced_vat" t-value="o.fiscal_position_id.foreign_vat"/>
+            <t t-set="layout_document_title"/>
+            <t t-set="address"/>
+            <t t-set="information_block"/>
+
+            <t t-set="display_discount" t-value="any(l.discount for l in o.invoice_line_ids)"/>
+            <t t-set="lines" t-value="o.invoice_line_ids.sorted(key=lambda l: (-l.sequence, l.date, l.move_name, -l.id))"/>
+
+            <div class="page burqan-invoice mb-4">
+                <style>
+                    .burqan-invoice {
+                        font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+                        color: #333333;
+                        font-size: 13px;
+                        line-height: 1.45;
+                    }
+                    .burqan-invoice .burqan-blue {
+                        color: #0072BC;
+                    }
+                    .burqan-invoice .burqan-section {
+                        border-bottom: 2px solid #0072BC;
+                        padding-bottom: 10px;
+                        margin-bottom: 14px;
+                    }
+                    .burqan-invoice .burqan-row {
+                        display: table;
+                        width: 100%;
+                        table-layout: fixed;
+                        margin-bottom: 4px;
+                    }
+                    .burqan-invoice .burqan-col-left,
+                    .burqan-invoice .burqan-col-center,
+                    .burqan-invoice .burqan-col-right {
+                        display: table-cell;
+                        vertical-align: middle;
+                    }
+                    .burqan-invoice .burqan-col-left {
+                        width: 28%;
+                        text-align: left;
+                    }
+                    .burqan-invoice .burqan-col-center {
+                        width: 44%;
+                        text-align: center;
+                    }
+                    .burqan-invoice .burqan-col-right {
+                        width: 28%;
+                        text-align: right;
+                    }
+                    .burqan-invoice .burqan-label {
+                        color: #0072BC;
+                        font-weight: 600;
+                    }
+                    .burqan-invoice .burqan-label-strong {
+                        color: #0072BC;
+                        font-weight: 700;
+                        text-transform: uppercase;
+                        font-size: 14px;
+                    }
+                    .burqan-invoice .burqan-value {
+                        color: #333333;
+                        font-weight: 600;
+                    }
+                    .burqan-invoice .burqan-ar {
+                        direction: rtl;
+                        unicode-bidi: embed;
+                        font-family: 'Segoe UI', Tahoma, 'Arial Unicode MS', sans-serif;
+                    }
+                    .burqan-invoice .burqan-title-row {
+                        margin: 12px 0 10px;
+                    }
+                    .burqan-invoice .burqan-title-left {
+                        color: #0072BC;
+                        font-weight: 700;
+                        font-size: 22px;
+                        text-transform: lowercase;
+                    }
+                    .burqan-invoice .burqan-title-center {
+                        color: #0072BC;
+                        font-weight: 700;
+                        font-size: 28px;
+                        letter-spacing: 0.5px;
+                    }
+                    .burqan-invoice .burqan-title-right {
+                        color: #0072BC;
+                        font-weight: 700;
+                        font-size: 22px;
+                    }
+                    .burqan-invoice .burqan-dates {
+                        margin-bottom: 16px;
+                    }
+                    .burqan-invoice table.burqan-lines {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 6px;
+                        page-break-inside: auto;
+                    }
+                    .burqan-invoice table.burqan-lines thead {
+                        display: table-header-group;
+                    }
+                    .burqan-invoice table.burqan-lines tr {
+                        page-break-inside: avoid;
+                        page-break-after: auto;
+                    }
+                    .burqan-invoice table.burqan-lines th.burqan-desc-col { width: 36%; }
+                    .burqan-invoice table.burqan-lines th.burqan-qty-col { width: 10%; }
+                    .burqan-invoice table.burqan-lines th.burqan-price-col { width: 14%; }
+                    .burqan-invoice table.burqan-lines th.burqan-disc-col { width: 8%; }
+                    .burqan-invoice table.burqan-lines th.burqan-tax-col { width: 12%; }
+                    .burqan-invoice table.burqan-lines th.burqan-amt-col { width: 14%; }
+                    .burqan-invoice table.burqan-lines th {
+                        background-color: #0072BC;
+                        color: #ffffff;
+                        border: 1px solid #0072BC;
+                        padding: 8px 6px;
+                        font-size: 11px;
+                        font-weight: 700;
+                        text-align: center;
+                        vertical-align: middle;
+                    }
+                    .burqan-invoice table.burqan-lines th .burqan-th-en {
+                        display: block;
+                        line-height: 1.2;
+                    }
+                    .burqan-invoice table.burqan-lines th .burqan-th-ar {
+                        display: block;
+                        direction: rtl;
+                        font-size: 10px;
+                        line-height: 1.2;
+                        margin-top: 2px;
+                    }
+                    .burqan-invoice table.burqan-lines td {
+                        border: 1px solid #d9d9d9;
+                        padding: 7px 6px;
+                        vertical-align: top;
+                        font-size: 12px;
+                    }
+                    .burqan-invoice table.burqan-lines td.burqan-num {
+                        text-align: right;
+                        white-space: nowrap;
+                    }
+                    .burqan-invoice table.burqan-lines td.burqan-amount {
+                        text-align: right;
+                        background-color: #f5f5f5;
+                        font-weight: 600;
+                    }
+                    .burqan-invoice table.burqan-lines td.burqan-desc {
+                        text-align: left;
+                    }
+                    .burqan-invoice table.burqan-lines td.burqan-desc span {
+                        display: block;
+                    }
+                    .burqan-invoice table.burqan-lines tr.o_line_section td {
+                        background-color: #eef6fb;
+                        font-weight: 700;
+                        color: #0072BC;
+                    }
+                    .burqan-invoice table.burqan-lines tr.o_line_note td {
+                        font-style: italic;
+                    }
+                    .burqan-invoice .burqan-totals-wrap {
+                        width: 100%;
+                        margin-top: 12px;
+                        page-break-inside: avoid;
+                    }
+                    .burqan-invoice .burqan-totals-wrap table.o_total_table {
+                        width: 42%;
+                        margin-left: auto;
+                        border-collapse: collapse;
+                    }
+                    .burqan-invoice .burqan-totals-wrap table.o_total_table td,
+                    .burqan-invoice .burqan-totals-wrap table.o_total_table th {
+                        border: none;
+                        padding: 4px 0;
+                    }
+                    .burqan-invoice .burqan-footer-block {
+                        margin-top: 18px;
+                        page-break-inside: avoid;
+                    }
+                    .burqan-invoice .burqan-footer-block .burqan-row {
+                        margin-bottom: 8px;
+                    }
+                </style>
+
+                <!-- Billed To -->
+                <div class="burqan-section">
+                    <div class="burqan-row">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label-strong">Billed To:</span>
+                        </div>
+                        <div class="burqan-col-center"/>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label-strong">السادة:</span>
+                        </div>
+                    </div>
+                    <div class="burqan-row">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label">Customer Name:</span>
+                        </div>
+                        <div class="burqan-col-center">
+                            <span class="burqan-value" t-field="o.partner_id.name"/>
+                        </div>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label">اسم العميل :</span>
+                        </div>
+                    </div>
+                    <div class="burqan-row">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label">Taxes No:</span>
+                        </div>
+                        <div class="burqan-col-center">
+                            <span class="burqan-value" t-out="o.partner_id.vat or ''"/>
+                        </div>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label">الرقم الضريبي :</span>
+                        </div>
+                    </div>
+                    <div class="burqan-row">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label">Customer Phone:</span>
+                        </div>
+                        <div class="burqan-col-center">
+                            <span class="burqan-value" t-out="o.partner_id.phone or o.partner_id.mobile or ''"/>
+                        </div>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label">هاتف العميل :</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoice title -->
+                <div class="burqan-title-row burqan-row">
+                    <div class="burqan-col-left">
+                        <span class="burqan-title-left">
+                            <t t-if="o.move_type == 'out_refund'">credit note</t>
+                            <t t-elif="proforma">proforma invoice</t>
+                            <t t-else="">invoice</t>
+                        </span>
+                    </div>
+                    <div class="burqan-col-center">
+                        <span class="burqan-title-center" t-field="o.name"/>
+                    </div>
+                    <div class="burqan-col-right burqan-ar">
+                        <span class="burqan-title-right">
+                            <t t-if="o.move_type == 'out_refund'">إشعار دائن</t>
+                            <t t-elif="proforma">فاتورة أولية</t>
+                            <t t-else="">فاتورة مبيعات</t>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Dates -->
+                <div class="burqan-dates">
+                    <div class="burqan-row" t-if="o.invoice_date">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label">Invoice Date:</span>
+                        </div>
+                        <div class="burqan-col-center">
+                            <span class="burqan-value" t-field="o.invoice_date" t-options='{"widget": "date", "format": "dd-MM-yyyy"}'/>
+                        </div>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label">تاريخ الفاتورة :</span>
+                        </div>
+                    </div>
+                    <div class="burqan-row" t-if="o.invoice_date_due">
+                        <div class="burqan-col-left">
+                            <span class="burqan-label">Due Date:</span>
+                        </div>
+                        <div class="burqan-col-center">
+                            <span class="burqan-value" t-field="o.invoice_date_due" t-options='{"widget": "date", "format": "dd-MM-yyyy"}'/>
+                        </div>
+                        <div class="burqan-col-right burqan-ar">
+                            <span class="burqan-label">تاريخ الاستحقاق :</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoice lines -->
+                <table class="burqan-lines" name="invoice_line_table">
+                    <thead>
+                        <tr>
+                            <th class="burqan-desc-col">
+                                <span class="burqan-th-en">Description</span>
+                                <span class="burqan-th-ar">الوصف</span>
+                            </th>
+                            <th class="burqan-qty-col">
+                                <span class="burqan-th-en">Quantity</span>
+                                <span class="burqan-th-ar">الكمية</span>
+                            </th>
+                            <th class="burqan-price-col">
+                                <span class="burqan-th-en">Unit Price</span>
+                                <span class="burqan-th-ar">سعر الوحدة</span>
+                            </th>
+                            <th t-if="display_discount" class="burqan-disc-col">
+                                <span class="burqan-th-en">Disc.%</span>
+                                <span class="burqan-th-ar">الخصم</span>
+                            </th>
+                            <th class="burqan-tax-col">
+                                <span class="burqan-th-en">Taxes</span>
+                                <span class="burqan-th-ar">الضريبة</span>
+                            </th>
+                            <th class="burqan-amt-col">
+                                <span class="burqan-th-en">Amount</span>
+                                <span class="burqan-th-ar">المبلغ</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="lines" t-as="line">
+                            <t t-if="line.display_type == 'product'" name="account_invoice_line_accountable">
+                                <tr>
+                                    <td class="burqan-desc" name="account_invoice_line_name">
+                                        <span t-field="line.name" t-options="{'widget': 'text'}" dir="auto"/>
+                                    </td>
+                                    <td class="burqan-num" name="td_quantity">
+                                        <span t-field="line.quantity"/>
+                                        <span t-if="line.product_uom_id" t-field="line.product_uom_id" groups="uom.group_uom"/>
+                                    </td>
+                                    <td class="burqan-num" name="td_price_unit">
+                                        <span t-field="line.price_unit"/>
+                                    </td>
+                                    <td t-if="display_discount" class="burqan-num" name="td_discount">
+                                        <span t-field="line.discount"/>
+                                    </td>
+                                    <td class="burqan-num" name="td_taxes">
+                                        <span t-out="', '.join([(tax.invoice_label or tax.name) for tax in line.tax_ids])" id="line_tax_ids"/>
+                                    </td>
+                                    <td class="burqan-amount" name="td_subtotal">
+                                        <span t-field="line.price_subtotal"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <t t-elif="line.display_type == 'line_section'">
+                                <tr class="o_line_section">
+                                    <td t-att-colspan="display_discount and 6 or 5">
+                                        <span t-field="line.name"/>
+                                    </td>
+                                </tr>
+                            </t>
+                            <t t-elif="line.display_type == 'line_note'">
+                                <tr class="o_line_note">
+                                    <td t-att-colspan="display_discount and 6 or 5">
+                                        <span t-field="line.name"/>
+                                    </td>
+                                </tr>
+                            </t>
+                        </t>
+                    </tbody>
+                </table>
+
+                <!-- Totals -->
+                <div class="burqan-totals-wrap clearfix">
+                    <div id="right-elements">
+                        <div id="total" class="clearfix row">
+                            <div class="col-12">
+                                <table class="o_total_table table table-borderless avoid-page-break-inside">
+                                    <t t-call="account.document_tax_totals">
+                                        <t t-set="tax_totals" t-value="o.tax_totals"/>
+                                        <t t-set="currency" t-value="o.currency_id"/>
+                                    </t>
+                                    <t t-if="print_with_payments">
+                                        <t t-if="o.payment_state != 'invoicing_legacy'">
+                                            <t t-set="payments_vals" t-value="o.sudo().invoice_payments_widget and o.sudo().invoice_payments_widget.get('content') or []"/>
+                                            <t t-foreach="payments_vals" t-as="payment_vals">
+                                                <tr t-if="payment_vals['is_exchange'] == 0">
+                                                    <td>
+                                                        <i class="oe_form_field text-end oe_payment_label">
+                                                            Paid on <t t-out="payment_vals['date']"/>
+                                                        </i>
+                                                    </td>
+                                                    <td class="text-end">
+                                                        <span t-out="payment_vals['amount']" t-options='{"widget": "monetary", "display_currency": o.currency_id}'/>
+                                                    </td>
+                                                </tr>
+                                            </t>
+                                            <t t-if="len(payments_vals) > 0">
+                                                <tr class="border-black fw-bold">
+                                                    <td>Amount Due</td>
+                                                    <td class="text-end">
+                                                        <span t-field="o.amount_residual"/>
+                                                    </td>
+                                                </tr>
+                                            </t>
+                                        </t>
+                                    </t>
+                                </table>
+                            </div>
+                        </div>
+                        <t t-if="o.company_id.display_invoice_amount_total_words">
+                            <p class="text-muted mb-2">
+                                <span t-field="o.amount_total_words"/>
+                            </p>
+                        </t>
+                    </div>
+                </div>
+
+                <!-- Footer: payment terms, notes, QR -->
+                <div class="burqan-footer-block" id="payment_term">
+                    <div t-if="o.fiscal_position_id.note" name="note" class="mb-2">
+                        <span t-field="o.fiscal_position_id.note"/>
+                    </div>
+                    <div t-if="o.taxes_legal_notes" name="taxes_legal_notes" class="mb-2">
+                        <span t-field="o.taxes_legal_notes"/>
+                    </div>
+                    <t t-set="payment_term_details" t-value="o.payment_term_details"/>
+                    <div t-if="o.invoice_payment_term_id" name="payment_term" class="mb-2">
+                        <span t-field="o.invoice_payment_term_id.note"/>
+                    </div>
+                    <div t-if="o.payment_reference" name="payment_communication" class="mb-2">
+                        <strong>Payment Communication:</strong>
+                        <span t-field="o.payment_reference"/>
+                        <t t-if="o.partner_bank_id">
+                            <br/>
+                            <span t-field="o.partner_bank_id"/>
+                        </t>
+                    </div>
+                    <div t-if="o.display_qr_code and o.amount_total > 0" id="qrcode" class="d-flex mb-2 avoid-page-break-inside">
+                        <div class="qrcode me-3" id="qrcode_image">
+                            <t t-set="qr_code_url" t-value="o._generate_qr_code(silent_errors=True)"/>
+                            <img t-if="qr_code_url" t-att-src="qr_code_url"/>
+                        </div>
+                    </div>
+                    <div t-if="o.narration" name="comment" class="mb-2">
+                        <span t-field="o.narration"/>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+</odoo>
