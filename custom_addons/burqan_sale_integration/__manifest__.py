@@ -1,6 +1,6 @@
 {
     'name': 'Burqan Sale Integration',
-    'version': '18.0.1.5.0',
+    'version': '18.0.1.5.1',
     'category': 'Sales',
     'summary': 'Sync Burqan products, stores, reps, and sales into Odoo',
     'description': """

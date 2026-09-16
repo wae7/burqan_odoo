@@ -78,12 +78,28 @@ class ProductTemplate(models.Model):
 
         if template:
             template.write(vals)
+            if image_b64:
+                template._burqan_publish_product_images()
             return template, False, 'updated'
 
         if not name:
             raise BurqanWebhookError(400, 'product.name is required.')
         template = self.create(vals)
+        if image_b64:
+            template._burqan_publish_product_images()
         return template, True, 'created'
+
+    def _burqan_publish_product_images(self):
+        """Make product image attachments publicly readable so the UI can load them."""
+        self.ensure_one()
+        attachments = self.env['ir.attachment'].sudo().search([
+            ('res_model', 'in', ('product.template', 'product.product')),
+            ('res_id', 'in', (self.id, *self.product_variant_ids.ids)),
+            ('res_field', 'like', 'image%'),
+            ('public', '=', False),
+        ])
+        if attachments:
+            attachments.write({'public': True})
 
     @api.model
     def _burqan_product_image_b64(self, product):
@@ -117,10 +133,33 @@ class ProductTemplate(models.Model):
                 raise BurqanWebhookError(400, 'product image is larger than 5MB.')
             if content_type and not content_type.startswith('image/') and 'octet-stream' not in content_type:
                 _logger.warning('Burqan product image unexpected content-type=%s url=%s', content_type, url)
-            return base64.b64encode(blob)
+            # Prefer a standard JPEG/PNG so Odoo UI rendering is reliable.
+            blob = self._burqan_normalize_image_bytes(blob)
+            # Odoo Binary fields expect a base64 *string*.
+            return base64.b64encode(blob).decode('ascii')
         except BurqanWebhookError:
             raise
         except (urllib.error.URLError, TimeoutError, ValueError) as err:
             _logger.warning('Burqan product image download failed url=%s err=%s', url, err)
             # Do not fail the whole product upsert if image fetch fails.
             return False
+
+    @api.model
+    def _burqan_normalize_image_bytes(self, blob):
+        try:
+            from PIL import Image
+            import io
+            image = Image.open(io.BytesIO(blob))
+            if image.mode not in ('RGB', 'RGBA'):
+                image = image.convert('RGB')
+            elif image.mode == 'RGBA':
+                background = Image.new('RGB', image.size, (255, 255, 255))
+                background.paste(image, mask=image.split()[-1])
+                image = background
+            # Progressive JPEGs sometimes render poorly in clients; save baseline JPEG.
+            out = io.BytesIO()
+            image.save(out, format='JPEG', quality=90, optimize=True, progressive=False)
+            return out.getvalue()
+        except Exception as err:
+            _logger.info('Burqan product image normalize skipped: %s', err)
+            return blob
