@@ -97,12 +97,17 @@ class SaleOrder(models.Model):
 
             order.action_confirm()
 
-            if self.env['ir.config_parameter'].sudo().get_param(
-                'burqan.webhook_auto_invoice'
-            ) in ('True', 'true', '1'):
-                invoices = order._create_invoices()
-                if invoices:
-                    invoices.action_post()
+            # Always create a draft customer invoice from the confirmed SO.
+            # Leave it draft so accounting can review/post later.
+            invoices = order._create_invoices()
+            if (
+                invoices
+                and self.env['ir.config_parameter'].sudo().get_param(
+                    'burqan.webhook_auto_invoice'
+                )
+                in ('True', 'true', '1')
+            ):
+                invoices.action_post()
         except (UserError, ValidationError) as err:
             raced = self.search([('x_burqan_order_id', '=', order_id)], limit=1)
             if raced:

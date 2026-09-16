@@ -113,4 +113,5 @@ curl -sS -X POST 'https://erp.burqan.tech/burqan/webhook/sale' \
 - Customer: partner with `x_burqan_store_id` = `store.id`, else phone, else create company partner (store sales); external sales use name only.
 - Line prices come from Burqan `unitPrice`.
 - Salesperson is auto-created if missing (Sales / Own Documents group).
-- Orders are confirmed. Invoices optional via **Auto-invoice Burqan webhook orders** (default off).
+- Orders are confirmed, then a **draft** customer invoice is created automatically.
+  Optional **Auto-post Burqan webhook invoices** posts that invoice (default off).

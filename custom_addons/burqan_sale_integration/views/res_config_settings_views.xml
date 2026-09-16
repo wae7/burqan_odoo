@@ -12,8 +12,8 @@
                     <field name="burqan_webhook_secret" password="True"/>
                 </setting>
                 <setting id="burqan_webhook_auto_invoice_setting"
-                         string="Auto-invoice Burqan webhook orders"
-                         help="Off by default. When enabled, confirmed webhook sale orders also create and post an invoice. No payments are created.">
+                         string="Auto-post Burqan webhook invoices"
+                         help="Webhook orders always create a draft invoice. Enable only if you also want that invoice posted automatically. No payments are created.">
                     <field name="burqan_webhook_auto_invoice"/>
                 </setting>
             </xpath>

@@ -1,10 +1,11 @@
 {
     'name': 'Burqan Sale Integration',
-    'version': '18.0.1.2.0',
+    'version': '18.0.1.3.0',
     'category': 'Sales',
     'summary': 'Receive completed Burqan Store sales as Odoo sale orders',
     'description': """
-Webhook from Burqan Store that creates and confirms sale orders.
+Webhook from Burqan Store that creates and confirms sale orders,
+then creates a draft customer invoice.
 
 Endpoints:
 - POST /burqan/webhook/sale
