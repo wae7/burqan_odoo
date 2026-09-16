@@ -427,38 +427,31 @@ class SaleOrder(models.Model):
 
         # Prefer registered store.id even for external sales when Burqan links them.
         if store_id:
-            partner = Partner.with_context(active_test=False).search(
-                [('x_burqan_store_id', '=', store_id)],
-                limit=1,
-            )
-            if not partner and phone:
-                partner = Partner.search([
-                    ('phone', '=', phone),
-                    '|',
-                    ('x_burqan_store_id', '=', False),
-                    ('x_burqan_store_id', '=', store_id),
-                ], limit=1)
-                if partner and not partner.x_burqan_store_id:
-                    partner.x_burqan_store_id = store_id
-            if not partner:
-                partner = Partner.create({
-                    'name': name,
-                    'phone': phone,
-                    'x_burqan_store_id': store_id,
-                    'company_type': 'company',
-                    'is_company': True,
-                    'customer_rank': 1,
-                })
-            else:
-                vals = {}
+            partner = Partner._burqan_find_store_partner(store_id, phone=phone, name=name)
+            if partner:
+                vals = {'x_burqan_store_id': store_id}
                 if name and partner.name != name:
                     vals['name'] = name
                 if phone and not partner.phone:
                     vals['phone'] = phone
                 if not partner.active:
                     vals['active'] = True
-                if vals:
-                    partner.write(vals)
+                partner.write(vals)
+                partner._burqan_absorb_store_duplicates(
+                    store_id=store_id, phone=phone, name=name,
+                )
+                return partner
+            partner = Partner.create({
+                'name': name,
+                'phone': phone,
+                'x_burqan_store_id': store_id,
+                'company_type': 'company',
+                'is_company': True,
+                'customer_rank': 1,
+            })
+            partner._burqan_absorb_store_duplicates(
+                store_id=store_id, phone=phone, name=name,
+            )
             return partner
 
         # Free-text external customer: match by name, never set x_burqan_store_id.

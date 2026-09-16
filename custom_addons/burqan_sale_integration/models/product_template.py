@@ -1,6 +1,13 @@
+import base64
+import logging
+import urllib.error
+import urllib.request
+
 from odoo import api, models
 
 from .exceptions import BurqanWebhookError
+
+_logger = logging.getLogger(__name__)
 
 
 class ProductTemplate(models.Model):
@@ -65,6 +72,10 @@ class ProductTemplate(models.Model):
         if barcode not in (None, ''):
             vals['barcode'] = str(barcode).strip()
 
+        image_b64 = self._burqan_product_image_b64(product)
+        if image_b64:
+            vals['image_1920'] = image_b64
+
         if template:
             template.write(vals)
             return template, False, 'updated'
@@ -73,3 +84,43 @@ class ProductTemplate(models.Model):
             raise BurqanWebhookError(400, 'product.name is required.')
         template = self.create(vals)
         return template, True, 'created'
+
+    @api.model
+    def _burqan_product_image_b64(self, product):
+        """Accept imageBase64 / image, or download imageUrl / image_url."""
+        raw_b64 = product.get('imageBase64') or product.get('image')
+        if isinstance(raw_b64, str) and raw_b64.strip():
+            data = raw_b64.strip()
+            if data.startswith('data:') and 'base64,' in data:
+                data = data.split('base64,', 1)[1]
+            try:
+                base64.b64decode(data, validate=True)
+            except Exception as err:
+                raise BurqanWebhookError(400, f'product image base64 is invalid: {err}') from err
+            return data
+
+        url = product.get('imageUrl') or product.get('image_url')
+        if not isinstance(url, str) or not url.strip():
+            return False
+        url = url.strip()
+        if not url.startswith(('http://', 'https://')):
+            raise BurqanWebhookError(400, 'product.imageUrl must be an absolute http(s) URL.')
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={'User-Agent': 'BurqanOdooWebhook/1.0'},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                content_type = (resp.headers.get('Content-Type') or '').lower()
+                blob = resp.read(5_000_000 + 1)
+            if len(blob) > 5_000_000:
+                raise BurqanWebhookError(400, 'product image is larger than 5MB.')
+            if content_type and not content_type.startswith('image/') and 'octet-stream' not in content_type:
+                _logger.warning('Burqan product image unexpected content-type=%s url=%s', content_type, url)
+            return base64.b64encode(blob)
+        except BurqanWebhookError:
+            raise
+        except (urllib.error.URLError, TimeoutError, ValueError) as err:
+            _logger.warning('Burqan product image download failed url=%s err=%s', url, err)
+            # Do not fail the whole product upsert if image fetch fails.
+            return False

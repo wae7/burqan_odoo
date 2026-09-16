@@ -7,8 +7,19 @@
         <field name="arch" type="xml">
             <xpath expr="//notebook" position="inside">
                 <page string="Burqan" name="burqan_store">
-                    <group>
+                    <group string="Store link">
                         <field name="x_burqan_store_id"/>
+                    </group>
+                    <group string="Sales balances">
+                        <group>
+                            <field name="x_burqan_sales_cash"/>
+                            <field name="x_burqan_sales_credit"/>
+                            <field name="x_burqan_sales_total"/>
+                        </group>
+                        <group>
+                            <field name="x_burqan_amount_paid"/>
+                            <field name="x_burqan_amount_due"/>
+                        </group>
                     </group>
                 </page>
             </xpath>

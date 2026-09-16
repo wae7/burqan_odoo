@@ -36,10 +36,22 @@ Events: `sale.completed`, `sale.updated`, `sale.cancelled`
 Events: `product.created`, `product.updated`, `product.deleted`  
 Key: `product.id` → `product.template.x_integration_id` (archive on delete / `active: false`)
 
+Optional image fields (Odoo sets `image_1920`):
+- `imageUrl` / `image_url` — absolute HTTPS URL (downloaded by Odoo)
+- `imageBase64` / `image` — raw or data-URL base64
+
 ## Stores (`/burqan/webhook/store`)
 
 Events: `store.created`, `store.updated`, `store.upsert`, `store.deleted`  
 Key: `store.id` → `res.partner.x_burqan_store_id` (archive on delete)
+
+Matching order on upsert: `x_burqan_store_id` → same phone → same name (company).  
+Duplicates with the same phone/name are merged onto the store contact.
+
+Contact **Burqan** tab shows sales balances from confirmed sale orders:
+- Sales Total (Cash / Credit / Total)
+- Amount Paid (cash sales + posted inbound payments)
+- Amount Due (credit sales minus posted payments)
 
 ## Representatives (`/burqan/webhook/representative`)
 
