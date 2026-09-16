@@ -35,17 +35,24 @@ class ResUsers(models.Model):
         rep_id_str = str(rep_id).strip() if rep_id not in (None, '') else False
         email = (representative.get('email') or '').strip()
         name = (representative.get('name') or '').strip() or (email or f'Burqan Rep {rep_id_str or ""}').strip()
+        phone = (representative.get('phone') or '').strip()
 
-        user = self.browse()
+        user = self.with_context(active_test=False).browse()
         if rep_id_str:
-            user = self.search([('x_burqan_representative_id', '=', rep_id_str)], limit=1)
+            user = self.with_context(active_test=False).search(
+                [('x_burqan_representative_id', '=', rep_id_str)],
+                limit=1,
+            )
         if not user and email:
-            user = self.search(
+            user = self.with_context(active_test=False).search(
                 ['|', ('login', '=ilike', email), ('email', '=ilike', email)],
                 limit=1,
             )
         if not user and name:
-            user = self.search([('name', '=ilike', name)], limit=1)
+            user = self.with_context(active_test=False).search(
+                [('name', '=ilike', name)],
+                limit=1,
+            )
 
         if user:
             vals = {}
@@ -55,9 +62,15 @@ class ResUsers(models.Model):
                 vals['name'] = name
             if email and (user.email or '').lower() != email.lower():
                 vals['email'] = email
+            if phone and hasattr(user, 'phone') and not user.phone:
+                vals['phone'] = phone
+            active = representative.get('active')
+            if active is not None and bool(active) != user.active:
+                vals['active'] = bool(active)
             if vals:
                 user.write(vals)
-            self._burqan_ensure_sales_group(user)
+            if user.active:
+                self._burqan_ensure_sales_group(user)
             return user, False
 
         if not create_if_missing:
@@ -70,19 +83,26 @@ class ResUsers(models.Model):
             )
 
         login = email.lower() if email else f'burqan.rep.{rep_id_str}@burqan.local'
-        if self.search_count([('login', '=', login)]):
+        if self.with_context(active_test=False).search_count([('login', '=', login)]):
             login = f'burqan.rep.{rep_id_str or "x"}@{login.split("@")[-1]}'
 
         salesman = self.env.ref('sales_team.group_sale_salesman', raise_if_not_found=False)
         group_cmds = [(4, salesman.id)] if salesman else []
 
-        user = self.with_context(no_reset_password=True).create({
+        create_vals = {
             'name': name,
             'login': login,
             'email': email or login,
             'x_burqan_representative_id': rep_id_str or False,
             'groups_id': group_cmds,
-        })
+        }
+        if phone and 'phone' in self._fields:
+            create_vals['phone'] = phone
+        active = representative.get('active')
+        if active is not None:
+            create_vals['active'] = bool(active)
+
+        user = self.with_context(no_reset_password=True).create(create_vals)
         return user, True
 
     @api.model
@@ -92,28 +112,68 @@ class ResUsers(models.Model):
             user.write({'groups_id': [(4, salesman.id)]})
 
     @api.model
+    def _burqan_deactivate_salesperson(self, representative):
+        if not isinstance(representative, dict):
+            raise BurqanWebhookError(400, 'representative is required.')
+        rep_id = representative.get('id')
+        email = (representative.get('email') or '').strip()
+        user = self.browse()
+        if rep_id not in (None, ''):
+            user = self.with_context(active_test=False).search(
+                [('x_burqan_representative_id', '=', str(rep_id).strip())],
+                limit=1,
+            )
+        if not user and email:
+            user = self.with_context(active_test=False).search(
+                ['|', ('login', '=ilike', email), ('email', '=ilike', email)],
+                limit=1,
+            )
+        if not user:
+            return self.browse(), 'missing'
+        if user.active:
+            user.active = False
+        return user, 'archived'
+
+    @api.model
     def _burqan_process_representative_webhook(self, payload):
-        """Create/update an Odoo salesperson from representative.upsert / representative.updated."""
+        """Create/update/archive an Odoo salesperson from representative.* webhooks."""
         if not isinstance(payload, dict):
             raise BurqanWebhookError(400, 'Payload must be a JSON object.')
         event = payload.get('event')
-        if event not in ('representative.upsert', 'representative.created', 'representative.updated'):
+        if event not in (
+            'representative.upsert',
+            'representative.created',
+            'representative.updated',
+            'representative.deleted',
+        ):
             raise BurqanWebhookError(
                 400,
-                'event must be representative.upsert, representative.created, or representative.updated.',
+                'event must be representative.upsert, representative.created, '
+                'representative.updated, or representative.deleted.',
             )
         rep = payload.get('representative')
         if not isinstance(rep, dict):
-            # Allow flat payload: {event, id, name, email}
             rep = {
                 'id': payload.get('id'),
                 'name': payload.get('name'),
                 'email': payload.get('email'),
+                'phone': payload.get('phone'),
+                'active': payload.get('active'),
             }
+
+        if event == 'representative.deleted':
+            if rep.get('id') in (None, '') and not (rep.get('email') or '').strip():
+                raise BurqanWebhookError(
+                    400,
+                    'representative.id or representative.email is required.',
+                )
+            user, action = self._burqan_deactivate_salesperson(rep)
+            return user, False, action
+
         if rep.get('id') in (None, '') and not (rep.get('email') or '').strip():
             raise BurqanWebhookError(400, 'representative.id or representative.email is required.')
         if not (rep.get('name') or '').strip() and not (rep.get('email') or '').strip():
             raise BurqanWebhookError(400, 'representative.name or representative.email is required.')
 
         user, created = self._burqan_find_or_create_salesperson(rep, create_if_missing=True)
-        return user, created
+        return user, created, 'created' if created else 'updated'

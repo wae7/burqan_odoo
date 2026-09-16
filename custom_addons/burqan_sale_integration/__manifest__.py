@@ -1,21 +1,22 @@
 {
     'name': 'Burqan Sale Integration',
-    'version': '18.0.1.3.0',
+    'version': '18.0.1.4.0',
     'category': 'Sales',
-    'summary': 'Receive completed Burqan Store sales as Odoo sale orders',
+    'summary': 'Sync Burqan products, stores, reps, and sales into Odoo',
     'description': """
-Webhook from Burqan Store that creates and confirms sale orders,
-then creates a draft customer invoice.
+Webhooks from Burqan Store:
 
-Endpoints:
-- POST /burqan/webhook/sale
+- POST /burqan/webhook/sale (completed / updated / cancelled)
+- POST /burqan/webhook/product
+- POST /burqan/webhook/store
 - POST /burqan/webhook/representative
 
 Auth: Authorization Bearer token stored in burqan.webhook_secret
 Products map via product.template x_integration_id (Burqan products.id).
-Representatives are matched/created as Odoo sales users.
+paymentType cash/deferred maps to Manual Payment (Cash/Credit).
+Confirmed sales create a draft customer invoice.
     """,
-    'depends': ['sale', 'product', 'product_integration_id', 'sales_team'],
+    'depends': ['sale', 'account', 'product', 'product_integration_id', 'sales_team'],
     'data': [
         'views/res_config_settings_views.xml',
         'views/sale_order_views.xml',

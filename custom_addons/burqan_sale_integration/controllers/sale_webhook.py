@@ -21,8 +21,9 @@ class BurqanSaleWebhook(http.Controller):
         methods=['POST'],
         save_session=False,
     )
-    def sale_completed(self, **kwargs):
+    def sale_webhook(self, **kwargs):
         order_id = None
+        event = None
         if not self._bearer_ok():
             return request.make_json_response(
                 {'ok': False, 'error': 'Unauthorized'},
@@ -32,28 +33,31 @@ class BurqanSaleWebhook(http.Controller):
         env = request.env(user=SUPERUSER_ID)
         try:
             payload = self._read_json_body()
-            order_id = payload.get('orderId') if isinstance(payload, dict) else None
+            if isinstance(payload, dict):
+                order_id = payload.get('orderId')
+                event = payload.get('event')
             with env.cr.savepoint():
-                order, reused = env['sale.order']._burqan_process_sale_webhook(payload)
+                order, reused, action = env['sale.order']._burqan_process_sale_webhook(payload)
             _logger.info(
-                'Burqan webhook %s orderId=%s sale.order=%s user_id=%s',
-                'reused' if reused else 'created',
+                'Burqan sale webhook event=%s action=%s reused=%s orderId=%s sale.order=%s',
+                event,
+                action,
+                reused,
                 order_id,
-                order.id,
-                order.user_id.id,
+                order.id if order else False,
             )
-            return request.make_json_response(
-                {
-                    'ok': True,
-                    'saleOrderId': order.id,
-                    'salespersonId': order.user_id.id or False,
-                },
-                status=200,
-            )
+            body = {
+                'ok': True,
+                'event': event,
+                'action': action,
+                'saleOrderId': order.id if order else False,
+                'salespersonId': order.user_id.id if order else False,
+            }
+            return request.make_json_response(body, status=200)
         except BurqanWebhookError as err:
             env.cr.rollback()
             _logger.warning(
-                'Burqan webhook rejected orderId=%s status=%s error=%s',
+                'Burqan sale webhook rejected orderId=%s status=%s error=%s',
                 order_id,
                 err.status,
                 err.error,
@@ -64,7 +68,7 @@ class BurqanSaleWebhook(http.Controller):
         except (UserError, ValidationError) as err:
             env.cr.rollback()
             _logger.warning(
-                'Burqan webhook validation failed orderId=%s error=%s',
+                'Burqan sale webhook validation failed orderId=%s error=%s',
                 order_id,
                 err,
             )
@@ -74,7 +78,131 @@ class BurqanSaleWebhook(http.Controller):
             )
         except Exception:
             env.cr.rollback()
-            _logger.exception('Burqan webhook failed orderId=%s', order_id)
+            _logger.exception('Burqan sale webhook failed orderId=%s', order_id)
+            return request.make_json_response(
+                {'ok': False, 'error': 'Internal server error'},
+                status=500,
+            )
+
+    @http.route(
+        '/burqan/webhook/product',
+        type='http',
+        auth='none',
+        csrf=False,
+        methods=['POST'],
+        save_session=False,
+    )
+    def product_webhook(self, **kwargs):
+        product_id = None
+        event = None
+        if not self._bearer_ok():
+            return request.make_json_response(
+                {'ok': False, 'error': 'Unauthorized'},
+                status=401,
+            )
+
+        env = request.env(user=SUPERUSER_ID)
+        try:
+            payload = self._read_json_body()
+            if isinstance(payload, dict):
+                event = payload.get('event')
+                product = payload.get('product') if isinstance(payload.get('product'), dict) else {}
+                product_id = product.get('id')
+            with env.cr.savepoint():
+                template, created, action = env['product.template']._burqan_process_product_webhook(
+                    payload
+                )
+            _logger.info(
+                'Burqan product webhook event=%s action=%s burqanId=%s product.template=%s',
+                event,
+                action,
+                product_id,
+                template.id if template else False,
+            )
+            return request.make_json_response(
+                {
+                    'ok': True,
+                    'event': event,
+                    'action': action,
+                    'productTemplateId': template.id if template else False,
+                    'created': created,
+                    'integrationId': template.x_integration_id if template else False,
+                    'active': template.active if template else False,
+                },
+                status=201 if created else 200,
+            )
+        except BurqanWebhookError as err:
+            env.cr.rollback()
+            body = {'ok': False, 'error': err.error}
+            body.update(err.extra)
+            return request.make_json_response(body, status=err.status)
+        except (UserError, ValidationError) as err:
+            env.cr.rollback()
+            return request.make_json_response({'ok': False, 'error': str(err)}, status=400)
+        except Exception:
+            env.cr.rollback()
+            _logger.exception('Burqan product webhook failed burqanId=%s', product_id)
+            return request.make_json_response(
+                {'ok': False, 'error': 'Internal server error'},
+                status=500,
+            )
+
+    @http.route(
+        '/burqan/webhook/store',
+        type='http',
+        auth='none',
+        csrf=False,
+        methods=['POST'],
+        save_session=False,
+    )
+    def store_webhook(self, **kwargs):
+        store_id = None
+        event = None
+        if not self._bearer_ok():
+            return request.make_json_response(
+                {'ok': False, 'error': 'Unauthorized'},
+                status=401,
+            )
+
+        env = request.env(user=SUPERUSER_ID)
+        try:
+            payload = self._read_json_body()
+            if isinstance(payload, dict):
+                event = payload.get('event')
+                store = payload.get('store') if isinstance(payload.get('store'), dict) else {}
+                store_id = store.get('id')
+            with env.cr.savepoint():
+                partner, created, action = env['res.partner']._burqan_process_store_webhook(payload)
+            _logger.info(
+                'Burqan store webhook event=%s action=%s burqanId=%s res.partner=%s',
+                event,
+                action,
+                store_id,
+                partner.id if partner else False,
+            )
+            return request.make_json_response(
+                {
+                    'ok': True,
+                    'event': event,
+                    'action': action,
+                    'partnerId': partner.id if partner else False,
+                    'created': created,
+                    'burqanStoreId': partner.x_burqan_store_id if partner else False,
+                    'active': partner.active if partner else False,
+                },
+                status=201 if created else 200,
+            )
+        except BurqanWebhookError as err:
+            env.cr.rollback()
+            body = {'ok': False, 'error': err.error}
+            body.update(err.extra)
+            return request.make_json_response(body, status=err.status)
+        except (UserError, ValidationError) as err:
+            env.cr.rollback()
+            return request.make_json_response({'ok': False, 'error': str(err)}, status=400)
+        except Exception:
+            env.cr.rollback()
+            _logger.exception('Burqan store webhook failed burqanId=%s', store_id)
             return request.make_json_response(
                 {'ok': False, 'error': 'Internal server error'},
                 status=500,
@@ -90,6 +218,7 @@ class BurqanSaleWebhook(http.Controller):
     )
     def representative_upsert(self, **kwargs):
         rep_id = None
+        event = None
         if not self._bearer_ok():
             return request.make_json_response(
                 {'ok': False, 'error': 'Unauthorized'},
@@ -100,22 +229,33 @@ class BurqanSaleWebhook(http.Controller):
         try:
             payload = self._read_json_body()
             if isinstance(payload, dict):
-                rep = payload.get('representative') if isinstance(payload.get('representative'), dict) else payload
+                event = payload.get('event')
+                rep = (
+                    payload.get('representative')
+                    if isinstance(payload.get('representative'), dict)
+                    else payload
+                )
                 rep_id = (rep or {}).get('id')
             with env.cr.savepoint():
-                user, created = env['res.users']._burqan_process_representative_webhook(payload)
+                user, created, action = env['res.users']._burqan_process_representative_webhook(
+                    payload
+                )
             _logger.info(
-                'Burqan representative webhook %s burqanId=%s res.users=%s',
-                'created' if created else 'updated',
+                'Burqan representative webhook event=%s action=%s burqanId=%s res.users=%s',
+                event,
+                action,
                 rep_id,
-                user.id,
+                user.id if user else False,
             )
             return request.make_json_response(
                 {
                     'ok': True,
-                    'userId': user.id,
+                    'event': event,
+                    'action': action,
+                    'userId': user.id if user else False,
                     'created': created,
-                    'login': user.login,
+                    'login': user.login if user else False,
+                    'active': user.active if user else False,
                 },
                 status=200,
             )
